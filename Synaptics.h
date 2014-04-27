@@ -38,28 +38,41 @@
 class Synaptics
 {
 	public:
-		Synaptics(int clk, int data);
-		void write(uint8_t data);
+		uint8_t data[6];
+
+		Synaptics(int clkpin, int datapin);
+		void write(uint8_t databyte);
 		uint8_t read(void);
-		bool reset();
+
+		bool reset(void);
 		void disable(void);
 		void enable(void);
 		void set_remote_mode(void);
-		void status_request(uint8_t data[3]); // ...read buttons status
-		void read_data(uint8_t data[6]);
-		void special_sequence(int sequence_type, uint8_t param, uint8_t data[]);
+		void status_request(void); // ...read buttons status
+		void read_data(void);
+		void special_sequence(int sequence_type, uint8_t param);
 		// information queries
-		void identify(uint8_t data[3]);
+		void identify(void);
 		uint8_t read_modes(void);
-		void read_capabilities(uint8_t data[3]);
-		void read_modelid(uint8_t data[3]);
+		void read_capabilities(void);
+		void read_modelid(void);
 		// set mode sequence
 		void set_mode(uint8_t mode);
+		bool isAbsolute(void);
+		bool isRelative(void);
+		// helper functions to parse data packet
+		uint8_t getZ(void);
+		uint8_t getW(void);	
+		int getX(void);	
+		int getY(void);	
+		bool leftClicked(void);
+		bool rightClicked(void);
 	private:
 		int _ps2clk;
 		int _ps2data;
-		int _mode;
-		int _status;
+		uint8_t _mode;		// read_modes
+		uint8_t _status; 	// PAD_STATUS_ENABLED | PAD_STATUS_DISABLED
+
 		void golo(int pin);
 		void gohi(int pin);
 		bool read_ack(void);

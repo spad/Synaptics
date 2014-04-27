@@ -15,15 +15,16 @@
  * the clock and data pins can be wired directly to the clk and data pins
  * of the Ps2 connector.  No external parts are needed.
  */
-Synaptics::Synaptics(int clk, int data)
+Synaptics::Synaptics(int clkpin, int datapin)
 {
-	_ps2clk = clk;
-	_ps2data = data;
+	_ps2clk = clkpin;
+	_ps2data = datapin;
 
 	gohi(_ps2clk);
 	gohi(_ps2data);
 	disable();
-	set_remote_mode();
+	// read mode byte to have consistent data reading
+	read_modes();
 }
 
 void
@@ -57,6 +58,8 @@ Synaptics::reset(void)
 	return (success==0xaa);
 }
 
+
+
 /* Switch to Remote mode, as distinct from the default
 Stream mode. In Remote mode, the device sends motion data packets only
 in response to a Read Data ($EB) command */
@@ -65,7 +68,6 @@ Synaptics::set_remote_mode(void)
 {
 	write(0xf0); 	// send command "Set Remote mode"
 	read_ack(); 	// read ack
-	_mode = PAD_REMOTE_MODE;
 }
 
 void
@@ -104,7 +106,7 @@ Resolution: The current resolution setting, from 0 to 3 (1, 2, 4, and 8 counts p
 Sample rate: The current sample rate setting, from 10 to 200.
 */
 void 
-Synaptics::status_request(uint8_t data[3])
+Synaptics::status_request(void)
 {
 	write(0xe9);
 	read_ack();
@@ -130,18 +132,94 @@ encode the absolute X, Y location of the finger on the sensor pad, as well as th
 the contents of the Absolute mode packet in great detail.
 */
 void
-Synaptics::read_data(/*uint8_t data[6]*/)
+Synaptics::read_data(void)
 {
 	write(0xeb);
 	read_ack();
 	data[0] = read();
 	data[1] = read();
 	data[2] = read();
+	// chek for absolute mode (6 bytes)
+	if (bitRead(_mode,7)) {
+		data[3] = read();
+		data[4] = read();
+		data[5] = read();
+	}
+}
+
+
+/*
+* get the Z value from data packet. Returns 0 if relative mode
+*/
+uint8_t 
+Synaptics::getZ(void) {
+	if (isAbsolute())
+		return(data[2]);
+	else 
+		return 0;
+}
+
+/*
+* get the W value from data packet. Returns 0 if relative mode
+*/
+uint8_t 
+Synaptics::getW(void) {
+	// check if W=1
+	if (bitRead(_mode,0)) {
+		return (
+			((data[0] & 0x30)>>2) |
+			((data[0] & 0x04)>>1) |
+			((data[4] & 0x04)>>2) 
+		);
+	} else 
+		return 0;
+}
+
+/*
+* get the X value from data packet
+*/
+int 
+Synaptics::getX(void) {
+	if (isAbsolute()) {
+		return (
+			data[4] 								|
+			((data[1] & 0x0F)<<8) 	| 
+			((data[3] & 0x10)<<8) 	 
+		);
+	} else {
+		return (bitRead(data[0],4))?(0xff00 | data[1]):data[1];
+	}
+}
+
+/*
+* get the Y value from data packet
+*/
+int 
+Synaptics::getY(void) {
+	if (isAbsolute()) {
+		return (
+			data[5] 								|
+			((data[1] & 0xF0)<<4) 	| 
+			((data[3] & 0x20)<<7) 	 
+		);
+	} else {
+		return (bitRead(data[0],5))?(0xff00 | data[2]):data[2];
+	}
+}
+
+bool 
+Synaptics::leftClicked(void) {
+	return (bitRead(data[0],0));
+}
+
+bool 
+Synaptics::rightClicked(void) {
+	return (bitRead(data[0],1));
 }
 
 
 void
-Synaptics::special_sequence(int sequence_type, uint8_t param, uint8_t data[])
+Synaptics::special_sequence(int sequence_type, uint8_t param)
 {
 	// send initial sequence
 	write(0xe8); read_ack();
@@ -180,9 +258,9 @@ byte2|	 								 0x047
 byte3|   			infoModelCode		    | 			infoMajor
 */
 void 
-Synaptics::identify(uint8_t data[3])
+Synaptics::identify(void)
 {
-	special_sequence(PAD_SEQ_INFO,0x00, data);
+	special_sequence(PAD_SEQ_INFO,0x00);
 }
 
 /**
@@ -201,9 +279,9 @@ Synaptics::identify(uint8_t data[3])
 uint8_t 
 Synaptics::read_modes(void)
 {
-	uint8_t data[3];
-	special_sequence(PAD_SEQ_INFO,0x01, data);
-	return data[2];
+	special_sequence(PAD_SEQ_INFO,0x01);
+	_mode = data[2];
+	return _mode;
 }
 
 /**
@@ -241,15 +319,15 @@ capPalmDetect (bit 0)
 	or hand contact.	
 */
 void 
-Synaptics::read_capabilities(uint8_t data[3])
+Synaptics::read_capabilities(void)
 {
-	special_sequence(PAD_SEQ_INFO,0x02, data);
+	special_sequence(PAD_SEQ_INFO,0x02);
 }
 
 void 
-Synaptics::read_modelid(uint8_t data[3])
+Synaptics::read_modelid(void)
 {
-	special_sequence(PAD_SEQ_INFO,0x03, data);
+	special_sequence(PAD_SEQ_INFO,0x03);
 }
 
 /**
@@ -258,12 +336,13 @@ Synaptics::read_modelid(uint8_t data[3])
 void
 Synaptics::set_mode(uint8_t mode)
 {
-	special_sequence(PAD_SEQ_SET_MODE,mode, NULL);
+	special_sequence(PAD_SEQ_SET_MODE,mode);
+	_mode = mode;
 }
 
 /* write a byte to the Synaptics device */
 void
-Synaptics::write(uint8_t data)
+Synaptics::write(uint8_t databyte)
 {
 	uint8_t i;
 	uint8_t parity = 1;
@@ -281,7 +360,7 @@ Synaptics::write(uint8_t data)
 	// clear to send data
 	for (i=0; i < 8; i++)
 	{
-		if (data & 0x01)
+		if (databyte & 0x01)
 		{ 
 			gohi(_ps2data);
 		} else {
@@ -290,8 +369,8 @@ Synaptics::write(uint8_t data)
 		// wait for clock
 		while (digitalRead(_ps2clk) == LOW) {;}
 		while (digitalRead(_ps2clk) == HIGH){;}
-		parity = parity ^ (data & 0x01);
-		data = data >> 1;
+		parity = parity ^ (databyte & 0x01);
+		databyte = databyte >> 1;
 	}
 	// parity bit
 	if (parity)
@@ -311,6 +390,22 @@ Synaptics::write(uint8_t data)
 	while ((digitalRead(_ps2clk) == LOW) || (digitalRead(_ps2data) == LOW)){;}
 	// hold up incoming data
 	golo(_ps2clk);
+}
+
+/*
+* returns true if the pad is currently in absolute mode
+*/
+bool 
+Synaptics::isAbsolute(void) {
+	return (bitRead(_mode,7));
+}
+
+/*
+* returns true if the pad is currently in relative mode
+*/
+bool 
+Synaptics::isRelative(void) {
+	return (!bitRead(_mode,7));
 }
 
 
