@@ -23,8 +23,8 @@
 #define PAD_MODE_SLEEP		0x30 // bit3 1 to select sleep mode
 #define PAD_MODE_DISGEST	0x20 // bit2 1 to disable detection of tap and drag gestures
 #define PAD_MODE_PACKETSIZE 0x10 // not used in ps2 mode
-#define PAD_MODE_WMODE		0x01 // 0 to select normal Absolute mode packets, or 1 to select
-								 // enhanced Absolute packets that contain the “W” value
+#define PAD_MODE_WMODE		0x01 	// 0 to select normal Absolute mode packets, or 1 to select
+								 								// enhanced Absolute packets that contain the “W” value
 #define PAD_MODE_COMMON_00	0x01 // Always OK Relative mode
 #define PAD_MODE_COMMON_04  0x04 // Version 4.x or later Relative mode with gestures disabled
 #define PAD_MODE_COMMON_40 	0x40 // Always OK Relative mode with high packet rate
